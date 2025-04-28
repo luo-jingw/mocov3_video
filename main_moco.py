@@ -29,6 +29,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as torchvision_models
 from torch.utils.tensorboard import SummaryWriter
+from torchvision.datasets import Kinetics
 
 import moco.builder
 import moco.loader
@@ -284,10 +285,18 @@ def main_worker(gpu, ngpus_per_node, args):
         normalize
     ]
 
-    train_dataset = datasets.ImageFolder(
-        traindir,
-        moco.loader.TwoCropsTransform(transforms.Compose(augmentation1), 
-                                      transforms.Compose(augmentation2)))
+    train_dataset = Kinetics(
+    root='/root/autodl-tmp/kinetics-raw/raw/',
+    frames_per_clip=16, # 根据需求调整
+    step_between_clips=1,
+    transform=transforms.Compose([
+        transforms.Resize(224),
+        transforms.CenterCrop(224),
+        transforms.ToTensor()
+    ]),
+    extensions=('mp4',),
+    download=False
+    )
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
