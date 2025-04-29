@@ -153,6 +153,67 @@ def main():
         # Simply call main_worker function
         main_worker(args.gpu, ngpus_per_node, args)
 
+import os
+import torch
+from torchvision import transforms
+from torchvision.datasets import Kinetics
+
+class SafeKinetics(Kinetics):
+    def __init__(self, root, frames_per_clip=8, step_between_clips=1):
+        super(SafeKinetics, self).__init__(
+            root=root,
+            frames_per_clip=frames_per_clip,
+            step_between_clips=step_between_clips,
+            extensions=('mp4',),
+            download=False,
+            transform=None  # 手动transform
+        )
+
+        self.safe_transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),  # 确保是Tensor
+        ])
+        self.frames_per_clip = frames_per_clip
+
+    def __getitem__(self, idx):
+        try:
+            # 原始调用，得到clip (T, H, W, C) and audio (我们不用)
+            video, _, _, _ = super(SafeKinetics, self).__getitem__(idx)
+
+            if isinstance(video, list):
+                # 防止某些版本torchvision返回list of PIL
+                frames = [self.safe_transform(frame) for frame in video]
+                clip = torch.stack(frames, dim=0)  # (T, C, H, W)
+            elif isinstance(video, torch.Tensor):
+                # 有些read_video直接返回Tensor
+                video = video.permute(0, 3, 1, 2)  # (T, H, W, C) → (T, C, H, W)
+                frames = [self.safe_transform(transforms.ToPILImage()(frame)) for frame in video]
+                clip = torch.stack(frames, dim=0)
+            else:
+                raise RuntimeError(f"Unsupported video type: {type(video)}")
+
+            # ---- 保证帧数统一 ----
+            T, C, H, W = clip.shape
+            if T < self.frames_per_clip:
+                # 帧数不足，重复最后一帧补齐
+                pad_frames = self.frames_per_clip - T
+                pad = clip[-1:].repeat(pad_frames, 1, 1, 1)
+                clip = torch.cat([clip, pad], dim=0)
+            elif T > self.frames_per_clip:
+                # 帧数过多，裁剪
+                clip = clip[:self.frames_per_clip]
+
+            assert clip.shape == (self.frames_per_clip, 3, 224, 224)
+
+            return clip
+
+        except Exception as e:
+            print(f"[Warning] Skipped sample {idx} due to error: {e}")
+            # 出现任何错误时，随机重新采一个正常样本替代
+            new_idx = (idx + 1) % len(self)
+            return self.__getitem__(new_idx)
+
 
 def main_worker(gpu, ngpus_per_node, args):
     args.gpu = gpu
@@ -285,18 +346,11 @@ def main_worker(gpu, ngpus_per_node, args):
         normalize
     ]
 
-    train_dataset = Kinetics(
-    root='/root/autodl-tmp/kinetics-raw/raw/',
-    frames_per_clip=8, 
+    train_dataset = SafeKinetics(
+    root='/root/autodl-tmp/kinetics-raw-mini/',
+    frames_per_clip=8,
     step_between_clips=1,
-    transform=transforms.Compose([
-        transforms.Resize(224),
-        transforms.CenterCrop(224),
-        transforms.ToTensor()
-    ]),
-    extensions=('mp4',),
-    download=False
-    )
+        )
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
