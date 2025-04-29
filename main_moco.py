@@ -287,7 +287,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     train_dataset = Kinetics(
     root='/root/autodl-tmp/kinetics-raw/raw/',
-    frames_per_clip=16, # 根据需求调整
+    frames_per_clip=8, 
     step_between_clips=1,
     transform=transforms.Compose([
         transforms.Resize(224),
