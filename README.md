@@ -1,3 +1,15 @@
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+#
+# Additional modifications by [Your Name or Organization] on [Date].
+#
+# This file is based on the original MoCo v3 implementation:
+# https://github.com/facebookresearch/moco-v3
+
+
 ## MoCo v3 for Self-supervised ResNet and ViT
 
 ### Introduction
